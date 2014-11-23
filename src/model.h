@@ -81,7 +81,8 @@ public:
     int * nwsum; // nwsum[j]: total number of words assigned to topic j, size K
     int * ndsum; // nasum[i]: total number of words in document i, size M
     double ** theta; // theta: document-topic distributions, size M x K
-    double ** phi; // phi: topic-word distributions, size K x V
+    double ** phi; // phi: topic-word distributions, size K x V 
+    int ** alias_samples; // alias_samples[w]: a list of topic samples for word w, size V x K
     
     // for inference only
     int inf_liter;
@@ -97,7 +98,7 @@ public:
     // --------------------------------------
     
     model() {
-	set_default_values();
+	    set_default_values();
     }
           
     ~model();
@@ -141,6 +142,7 @@ public:
     // estimate LDA model using Gibbs sampling
     void estimate();
     int sampling(int m, int n);
+    int walker_alias(int w);
     void compute_theta();
     void compute_phi();
     

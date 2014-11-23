@@ -149,6 +149,14 @@ model::~model() {
 	    }
 	}
     }
+
+    if (alias_samples) {
+        for (int w = 0; w < V; ++w) {
+            if (alias_samples[w]) {
+                delete alias_samples[w];
+            }
+        }
+    }
 }
 
 void model::set_default_values() {
@@ -604,6 +612,7 @@ int model::init_est() {
     // alpha, beta: from command line or default values
     // niters, savestep: from command line or default values
 
+    // nw[w][k] is the number of times word w is assigned to topic k
     nw = new int*[V];
     for (w = 0; w < V; w++) {
         nw[w] = new int[K];
@@ -611,7 +620,8 @@ int model::init_est() {
     	    nw[w][k] = 0;
         }
     }
-	
+
+    // nd[m][k] is the number of tokens in document m assigned to topic k
     nd = new int*[M];
     for (m = 0; m < M; m++) {
         nd[m] = new int[K];
@@ -619,12 +629,15 @@ int model::init_est() {
     	    nd[m][k] = 0;
         }
     }
-	
+
+    // nwsum[k] is the total count of tokens assigned to topic k	
     nwsum = new int[K];
     for (k = 0; k < K; k++) {
 	nwsum[k] = 0;
     }
     
+
+    // ndsum[m] is the total number of tokens in document m
     ndsum = new int[M];
     for (m = 0; m < M; m++) {
 	ndsum[m] = 0;
@@ -652,11 +665,13 @@ int model::init_est() {
         ndsum[m] = N;      
     }
     
+    // theta[m] is the multinomial distribution over topics k for document m
     theta = new double*[M];
     for (m = 0; m < M; m++) {
         theta[m] = new double[K];
     }
 	
+    // phi[k] is the multinomial distribution over words w for topic k
     phi = new double*[K];
     for (k = 0; k < K; k++) {
         phi[k] = new double[V];
@@ -671,7 +686,7 @@ int model::init_estc() {
 
     p = new double[K];
 
-    // load moel, i.e., read z and ptrndata
+    // load model, i.e., read z and ptrndata
     if (load_model(model_name)) {
 	printf("Fail to load word-topic assignmetn file of the model!\n");
 	return 1;
@@ -737,35 +752,36 @@ int model::init_estc() {
 
 void model::estimate() {
     if (twords > 0) {
-	// print out top words per topic
-	dataset::read_wordmap(dir + wordmapfile, &id2word);
+	    // print out top words per topic
+	    dataset::read_wordmap(dir + wordmapfile, &id2word);
     }
 
     printf("Sampling %d iterations!\n", niters);
 
+    // Each iteration of Gibbs
     int last_iter = liter;
     for (liter = last_iter + 1; liter <= niters + last_iter; liter++) {
-	printf("Iteration %d ...\n", liter);
-	
-	// for all z_i
-	for (int m = 0; m < M; m++) {
-	    for (int n = 0; n < ptrndata->docs[m]->length; n++) {
-		// (z_i = z[m][n])
-		// sample from p(z_i|z_-i, w)
-		int topic = sampling(m, n);
-		z[m][n] = topic;
-	    }
-	}
-	
-	if (savestep > 0) {
-	    if (liter % savestep == 0) {
-		// saving the model
-		printf("Saving the model at iteration %d ...\n", liter);
-		compute_theta();
-		compute_phi();
-		save_model(utils::generate_model_name(liter));
-	    }
-	}
+        printf("Iteration %d ...\n", liter);
+    	
+    	// for all z_i (Each Gibbs sample)
+        for (int m = 0; m < M; m++) {
+            for (int n = 0; n < ptrndata->docs[m]->length; n++) {
+    	        // (z_i = z[m][n])
+    	        // sample from p(z_i|z_-i, w)
+    	        int topic = sampling(m, n);
+    	        z[m][n] = topic;
+    	    }
+    	}
+    	
+    	if (savestep > 0) {
+    	    if (liter % savestep == 0) {
+    		    // saving the model
+    		    printf("Saving the model at iteration %d ...\n", liter);
+    		    compute_theta();
+    		    compute_phi();
+    		    save_model(utils::generate_model_name(liter));
+    	    }
+    	}
     }
     
     printf("Gibbs sampling completed!\n");
@@ -776,6 +792,8 @@ void model::estimate() {
     save_model(utils::generate_model_name(-1));
 }
 
+// The Gibbs sampler itself
+// TODO (xanda) rewrite this for MHW
 int model::sampling(int m, int n) {
     // remove z_i from the count variables
     int topic = z[m][n];
@@ -838,7 +856,7 @@ int model::init_inf() {
 
     // load moel, i.e., read z and ptrndata
     if (load_model(model_name)) {
-	printf("Fail to load word-topic assignmetn file of the model!\n");
+	printf("Fail to load word-topic assignment file of the model!\n");
 	return 1;
     }
 

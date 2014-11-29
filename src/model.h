@@ -32,8 +32,11 @@
 #ifndef	_MODEL_H
 #define	_MODEL_H
 
+#include <vector>
 #include "constants.h"
 #include "dataset.h"
+#include "walker.h"
+
 
 using namespace std;
 
@@ -74,15 +77,15 @@ public:
     int twords; // print out top words per each topic
     int withrawstrs;
 
-    double * p; // temp variable for sampling
-    int ** z; // topic assignments for words, size M x doc.size()
-    int ** nw; // cwt[i][j]: number of instances of word/term i assigned to topic j, size V x K
-    int ** nd; // na[i][j]: number of words in document i assigned to topic j, size M x K
-    int * nwsum; // nwsum[j]: total number of words assigned to topic j, size K
-    int * ndsum; // nasum[i]: total number of words in document i, size M
-    double ** theta; // theta: document-topic distributions, size M x K
-    double ** phi; // phi: topic-word distributions, size K x V 
-    int ** alias_samples; // alias_samples[w]: a list of topic samples for word w, size V x K
+    double * p;                     // temp variable for sampling
+    int ** z;                       // topic assignments for words, size M x doc.size()
+    int ** nw;                      // nw[i][j]: number of instances of word/term i assigned to topic j, size V x K
+    int ** nd;                      // na[i][j]: number of words in document i assigned to topic j, size M x K
+    int * nwsum;                    // nwsum[j]: total number of words assigned to topic j, size K
+    int * ndsum;                    // nasum[i]: total number of words in document i, size M
+    double ** theta;                // theta: document-topic distributions, size M x K
+    double ** phi;                  // phi: topic-word distributions, size K x V 
+    walker ** alias_samples;         // alias_samples[w]: a vector of topic samples for word w up to length K
     
     // for inference only
     int inf_liter;
@@ -142,7 +145,7 @@ public:
     // estimate LDA model using Gibbs sampling
     void estimate();
     int sampling(int m, int n);
-    int walker_alias(int w);
+    void walker_alias(int w);
     void compute_theta();
     void compute_phi();
     

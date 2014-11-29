@@ -30,90 +30,95 @@
  *   http://www.arbylon.net/publications/text-est.pdf
  */
 
+#include <queue>
 #include <random>
 #include <stdlib.h>
 #include "walker.h"
+#include "model.h"
 
 using namespace std;
 
-walker::walker(int w, model mod) {
-    this.w = w;
-    this.K = mod.K;
-    H = queue<topicprob>();
-    L = queue<topicprob>();
-    double totalprob = 0.0
+walker::~walker()
+{
+    delete [] topicprobs;
+}
+
+walker::walker(int w, model * mod) : w(w), K(mod->K), Q(0.0) 
+{
+    queue<topicprob> H;
+    queue<topicprob> L;
+    topicprobs = new double[K];
+    double totalprob = 0.0;
     double threshold = 1.0 / K;
-    for (i = 0; i < K; ++i) {
-        double probprop = model.alpha * (model.nw[w][i] + model.beta) / (model.nwsum[i] + (model.beta * model.V));
-        if (probprop > threshold) {
-            H.push(topicprob(i, probprop));
+    for (int i = 0; i < K; ++i) {
+        double probprop = mod->alpha * (mod->nw[w][i] + mod->beta) / (mod->nwsum[i] + (mod->beta * mod->V));
+        topicprobs[i] = probprop;
+        Q += probprop;
+    }
+    for (int k = 0; k < K; ++k) {
+        double normprob = topicprobs[k] / Q;
+        if (normprob > threshold) {
+            H.push((topicprob){.topic = k, .prob = normprob});
         } else {
-            L.push(topicprob(i, probprop));
+            L.push((topicprob){.topic = k, .prob = normprob});
         }
-        totalprob += probprop;
     }
 
     buckets = vector<bucket>();    
     while (L.size() > 0 && H.size() > 0) {
-        topicprob low = L.pop();
-        if (low.prob / totalprob == threshold) {
-            newbucket = bucket(low.topic, low.topic, 1.0);
+        topicprob low = L.front();
+        if (low.prob == threshold) {
+            bucket newbucket = (bucket){low.topic, low.topic, 1.0};
+            buckets.push_back(newbucket);
+            L.pop();
             continue;
         }
-        topicprob high = H.pop();
-        newbucket = bucket(low.topic, high.topic, low.prob * K / totalprob);
+        topicprob high = H.front();
+        bucket newbucket = (bucket){low.topic, high.topic, low.prob * K};
         buckets.push_back(newbucket);
+        H.pop();
 
         double probleft = high.prob - threshold + low.prob;
         if (probleft > threshold) {
-            H.push(topicprob(high.topic, probleft));
+            H.push((topicprob){high.topic, probleft});
         } else {
-            L.push(topicprob(high.topic, probleft));
+            L.push((topicprob){high.topic, probleft});
         }
     }
 
     while (L.size() > 0) {
-        topicprob low = L.pop();
-        if (low.prob == threshold) {
-            newbucket = bucket(low.topic, low.topic, 1.0);
-            continue;
-        }
-        topicprob high = L.pop();
-        newbucket = bucket(low.topic, high.topic, low.prob * K / totalprob);
+        topicprob low = L.front();
+        bucket newbucket = (bucket){low.topic, low.topic, 1.0};
         buckets.push_back(newbucket);
-        }
+        L.pop();
+    }
+
+    while (H.size() > 0) {
+        topicprob high = H.front();
+        bucket newbucket = (bucket){high.topic, high.topic, 1.0};
+        buckets.push_back(newbucket);
+        H.pop();
     }
 }
 
-walker::~walker() {
-    if (topicprobs) {
-        delete [] topicprobs;
-    }
-}
-
-
-void walker::set_default_values() {
-    w = 0;
-    K = 0;
-    H = queue<topicprob>();
-    L = queue<topicprob>();
-    buckets = vector<bucket>();
-}
-
-int * walker::pull_samples() {
-    default_random_engine gen();
-    uniform_real_distribution<double> dist(0.0, 1.0);
-    int * samples = int[K];
-
-    for (i = 0; i < K; ++i) {
+void walker::pull_samples() {
+    for (int i = 0; i < K; ++i) {
         int buck = rand() % K;
-        double sample = dist(gen);
+        double sample = ((double)random() / RAND_MAX);
         if (sample < buckets[i].problow) {
-            samples[i] = buckets[i].lowtopic;
+            samples.push_back(buckets[i].lowtopic);
         } else {
-            samples[i] = buckets[i].hightopic;
+            samples.push_back(buckets[i].hightopic);
         }
     }
+}
 
-    return samples;
+int walker::next_topic() {
+    int ret = samples.back();
+    samples.pop_back();
+    return ret;
+}
+
+bool walker::is_empty() {
+    return (samples.size() == 0);
 }

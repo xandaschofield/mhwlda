@@ -32,42 +32,41 @@
 #ifndef	_WALKER_H
 #define	_WALKER_H
 
-#include <queue.h>
-#include "model.h"
+#include <vector>
 
 using namespace std;
+
+
+class model;
 
 struct topicprob {
     int topic;
     double prob;
-}
+};
 
 struct bucket {
     int lowtopic;
     int hightopic;
     double problow;
-}
+};
 
 // Walker alias
 class walker {
 public:
     int w;                  // the word id
     int K;                  // the number of topics
-    double * topicprobs;    // topicprob[k]: the multinomial probability of k
-    queue<topicprob> H;     // topics with greater than 1/K probability
-    queue<topicprob> L;     // topics with less than or equal to 1/L probability
+    double Q;               // normalizer
     vector<bucket> buckets; // buckets for deciding topics    
+    double * topicprobs;    // unnormalized probabilities of topics
+    vector<int> samples;    // samples (if any)
 
-
-    walker() {
-        set_default_values();
-    }
-
-    walker (int w, model mod);
+    walker (int w, model * mod);
     ~walker();
-    
+
     // set default values for variables
-    int * pull_samples();
+    void pull_samples();
+    int next_topic();
+    bool is_empty();
 };
 
 #endif

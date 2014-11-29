@@ -37,6 +37,7 @@
 #include "utils.h"
 #include "dataset.h"
 #include "model.h"
+#include "walker.h"
 
 using namespace std;
 
@@ -151,10 +152,9 @@ model::~model() {
     }
 
     if (alias_samples) {
-        for (int w = 0; w < V; ++w) {
-            if (alias_samples[w]) {
-                delete alias_samples[w];
-            }
+    for (int w = 0; w < V; w++)
+        if (alias_samples[w]) {
+        delete alias_samples[w];
         }
     }
 }
@@ -677,6 +677,8 @@ int model::init_est() {
         phi[k] = new double[V];
     }    
     
+    alias_samples = new walker*[V];
+
     return 0;
 }
 
@@ -792,6 +794,15 @@ void model::estimate() {
     save_model(utils::generate_model_name(-1));
 }
 
+void model::walker_alias(int w) {
+    walker * sampler = new walker(w, this);
+    sampler->pull_samples();
+    if (alias_samples[w] != NULL) {
+        delete alias_samples[w];
+    }
+    alias_samples[w] = sampler;
+}
+
 // The Gibbs sampler itself
 // TODO (xanda) rewrite this for MHW
 int model::sampling(int m, int n) {
@@ -803,24 +814,61 @@ int model::sampling(int m, int n) {
     nwsum[topic] -= 1;
     ndsum[m] -= 1;
 
+    int oldtopic = topic;
     double Vbeta = V * beta;
-    double Kalpha = K * alpha;    
+    double Ptotal = 0.0;
+    double Qtotal = alias_samples[w]->Q;
+    vector<int> validks;
+
     // do multinomial sampling via cumulative method
     for (int k = 0; k < K; k++) {
-	p[k] = (nw[w][k] + beta) / (nwsum[k] + Vbeta) *
-		    (nd[m][k] + alpha) / (ndsum[m] + Kalpha);
+        if (nd[m][k] == 0)
+            continue;
+        validks.push_back(k);
+        p[k] = nd[m][k] * (nw[w][k] + beta) / (nwsum[k] + Vbeta);
+        Ptotal += p[k];
     }
-    // cumulate multinomial parameters
-    for (int k = 1; k < K; k++) {
-	p[k] += p[k - 1];
-    }
-    // scaled sample because of unnormalized p[]
-    double u = ((double)random() / RAND_MAX) * p[K - 1];
+
+    while (true) {
+
+        // scaled sample because of unnormalized p[]
+        double u = ((double)random() / RAND_MAX) * (Ptotal + Qtotal);
     
-    for (topic = 0; topic < K; topic++) {
-	if (p[topic] > u) {
-	    break;
-	}
+        if (u < Qtotal) {
+            if (alias_samples[w] == NULL or alias_samples[w]->is_empty()) {
+                walker_alias(w);
+                Qtotal = alias_samples[w]->Q;
+            }
+            topic = alias_samples[w]->next_topic();
+        } else {
+            u -= Qtotal;
+            for (vector<int>::iterator i = validks.begin(); i != validks.end(); ++i) {
+    	        if (p[*i] > u) {
+                    topic = *i;
+    	            break;
+    	        } else {
+                    u -= p[*i];
+                }
+            }
+        }
+
+        if (topic == oldtopic) {
+            break;
+        }
+        double probaccept = (
+                             (nd[m][topic] + alpha) * (nw[w][topic] + beta) *
+                             (nwsum[topic] + Vbeta) * (p[topic] + alias_samples[w]->topicprobs[topic])
+                            ) / ( 
+                             (nd[m][oldtopic] + alpha) * (nw[w][oldtopic] + beta) *
+                             (nwsum[oldtopic] + Vbeta) * (p[oldtopic] + alias_samples[w]->topicprobs[oldtopic])
+                            );
+        if (probaccept >= 1.0) {
+            break;
+        }
+        double v = ((double)random() / RAND_MAX);
+        if (v < probaccept) {
+            break;
+        }
     }
     
     // add newly estimated z_i to count variables
@@ -854,7 +902,7 @@ int model::init_inf() {
 
     p = new double[K];
 
-    // load moel, i.e., read z and ptrndata
+    // load model, i.e., read z and ptrndata
     if (load_model(model_name)) {
 	printf("Fail to load word-topic assignment file of the model!\n");
 	return 1;

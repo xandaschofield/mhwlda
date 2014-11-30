@@ -55,11 +55,10 @@ model::~model() {
     }
 
     if (z) {
-	for (int m = 0; m < M; m++) {
-	    if (z[m]) {
-		delete z[m];
+	    for (int m = 0; m < M; m++) {
+	    delete [] z[m];
 	    }
-	}
+    delete [] z;
     }
     
     if (nw) {
@@ -678,6 +677,9 @@ int model::init_est() {
     }    
     
     alias_samples = new walker*[V];
+    for (w = 0; w < V; w++) {
+        alias_samples[w] = NULL;
+    }
 
     return 0;
 }
@@ -817,6 +819,10 @@ int model::sampling(int m, int n) {
     int oldtopic = topic;
     double Vbeta = V * beta;
     double Ptotal = 0.0;
+
+    if (alias_samples[w] == NULL) {
+        walker_alias(w);
+    }
     double Qtotal = alias_samples[w]->Q;
     vector<int> validks;
 

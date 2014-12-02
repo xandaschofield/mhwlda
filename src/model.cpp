@@ -864,10 +864,10 @@ int model::sampling(int m, int n) {
         }
         double probaccept = (
                              (nd[m][topic] + alpha) * (nw[w][topic] + beta) *
-                             (nwsum[topic] + Vbeta) * (p[topic] + alias_samples[w]->topicprobs[topic])
+                             (nwsum[oldtopic] + Vbeta) * (p[oldtopic] + alias_samples[w]->topicprobs[oldtopic])
                             ) / ( 
                              (nd[m][oldtopic] + alpha) * (nw[w][oldtopic] + beta) *
-                             (nwsum[oldtopic] + Vbeta) * (p[oldtopic] + alias_samples[w]->topicprobs[oldtopic])
+                             (nwsum[topic] + Vbeta) * (p[topic] + alias_samples[w]->topicprobs[topic])
                             );
         if (probaccept >= 1.0) {
             break;

@@ -40,7 +40,7 @@ public:
     
     // generate the model name for the current iteration
     // iter = -1 => final model
-    static string generate_model_name(int iter);  
+    static string generate_model_name(int iter, string fname);  
     
     // sort    
     static void sort(vector<double> & probs, vector<int> & words);

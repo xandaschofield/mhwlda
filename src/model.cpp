@@ -169,6 +169,7 @@ void model::set_default_values() {
     
     dir = "./";
     dfile = "trndocs.dat";
+    fname = "model";
     model_name = "model-final";    
     model_status = MODEL_STATUS_UNKNOWN;
     
@@ -244,7 +245,7 @@ int model::load_model(string model_name) {
     string filename = dir + model_name + tassign_suffix;
     FILE * fin = fopen(filename.c_str(), "r");
     if (!fin) {
-	printf("Cannot open file %d to load model!\n", filename.c_str());
+	printf("Cannot open file %s to load model!\n", filename.c_str());
 	return 1;
     }
     
@@ -783,7 +784,7 @@ void model::estimate() {
     		    printf("Saving the model at iteration %d ...\n", liter);
     		    compute_theta();
     		    compute_phi();
-    		    save_model(utils::generate_model_name(liter));
+    		    save_model(utils::generate_model_name(liter, fname));
     	    }
     	}
     }
@@ -793,7 +794,7 @@ void model::estimate() {
     compute_theta();
     compute_phi();
     liter--;
-    save_model(utils::generate_model_name(-1));
+    save_model(utils::generate_model_name(-1, fname));
 }
 
 void model::walker_alias(int w) {

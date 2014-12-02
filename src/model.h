@@ -53,7 +53,8 @@ public:
     string twords_suffix;	// suffix for file containing words-per-topics
 
     string dir;			// model directory
-    string dfile;		// data file    
+    string dfile;		// data file
+    string fname;       // special file name for model    
     string model_name;		// model name
     int model_status;		// model status:
 				// MODEL_STATUS_UNKNOWN: unknown status

@@ -759,7 +759,7 @@ int model::init_estc() {
 }
 
 void model::estimate() {
-    OMP_NUM_THREADS = num_threads;
+    omp_set_num_threads(num_threads);
     if (twords > 0) {
 	    // print out top words per topic
 	    dataset::read_wordmap(dir + wordmapfile, &id2word);
@@ -767,12 +767,14 @@ void model::estimate() {
 
     printf("Sampling %d iterations with %d processors!\n", niters, num_threads);
 
-    #pragma omp parallel for
-    for (int pp = 0; pp < num_threads; ++pp)
+    int pp(0);
+    int last_iter = liter;
+    int li(liter);
+    #pragma omp parallel for private(pp, li)
+    for (pp = 0; pp < num_threads; ++pp)
         // Each iteration of Gibbs
-        int last_iter = liter;
-        for (liter = last_iter + 1; liter <= niters + last_iter; liter++) {
-            printf("Iteration %d ...\n", liter);
+        for (int li = last_iter + 1; li <= niters + last_iter; ++li) {
+            printf("Iteration %d ...\n", li);
         	
         	// for all z_i (Each Gibbs sample)
             for (int m = (pp / num_threads) * M; m < ((pp + 1) / num_threads) * M; m++) {

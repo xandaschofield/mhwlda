@@ -2,8 +2,8 @@ CC=		g++
 
 OBJS=		strtokenizer.o dataset.o utils.o model.o walker.o
 MAIN=		lda
-FLAGS=		-fopenmp -O3 -o
-OFLAGS=		-fopenmp -O3 -c -o
+FLAGS=		-fopenmp -O3 -std=c++11 -o
+OFLAGS=		-fopenmp -O3 -std=c++11 -c -o
  
 all:	$(OBJS) $(MAIN).cpp
 	$(CC) $(FLAGS) $(MAIN) $(MAIN).cpp $(OBJS)

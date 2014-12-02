@@ -43,6 +43,7 @@ int utils::parse_args(int argc, char ** argv, model * pmodel) {
     int savestep = 0;
     int twords = 0;
     int withrawdata = 0;
+    int num_threads = 1;
     string fname = "model";
 
     int i = 0; 
@@ -88,8 +89,11 @@ int utils::parse_args(int argc, char ** argv, model * pmodel) {
 	} else if (arg == "-withrawdata") {
 	    withrawdata = 1;
 	
-    } else if (arg == "--fname") {
+    } else if (arg == "-fname") {
         fname = argv[++i];
+
+    } else if (arg == "-threads") {
+        num_threads = atoi(argv[++i]);
 
 	} else {
 	    // any more?
@@ -135,6 +139,7 @@ int utils::parse_args(int argc, char ** argv, model * pmodel) {
 	
 	pmodel->dfile = dfile;
     pmodel->fname = fname;
+    pmodel->num_threads = num_threads;
 	
 	string::size_type idx = dfile.find_last_of("/");			
 	if (idx == string::npos) {

@@ -29,6 +29,7 @@
  *   http://www.arbylon.net/publications/text-est.pdf
  */
 
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -205,6 +206,8 @@ void model::set_default_values() {
     newndsum = NULL;
     newtheta = NULL;
     newphi = NULL;
+
+    num_threads = 1;
 }
 
 int model::parse_args(int argc, char ** argv) {
@@ -693,7 +696,7 @@ int model::init_estc() {
 
     // load model, i.e., read z and ptrndata
     if (load_model(model_name)) {
-	printf("Fail to load word-topic assignmetn file of the model!\n");
+	printf("Fail to load word-topic assignment file of the model!\n");
 	return 1;
     }
 
@@ -756,38 +759,42 @@ int model::init_estc() {
 }
 
 void model::estimate() {
+    OMP_NUM_THREADS = num_threads;
     if (twords > 0) {
 	    // print out top words per topic
 	    dataset::read_wordmap(dir + wordmapfile, &id2word);
     }
 
-    printf("Sampling %d iterations!\n", niters);
+    printf("Sampling %d iterations with %d processors!\n", niters, num_threads);
 
-    // Each iteration of Gibbs
-    int last_iter = liter;
-    for (liter = last_iter + 1; liter <= niters + last_iter; liter++) {
-        printf("Iteration %d ...\n", liter);
-    	
-    	// for all z_i (Each Gibbs sample)
-        for (int m = 0; m < M; m++) {
-            for (int n = 0; n < ptrndata->docs[m]->length; n++) {
-    	        // (z_i = z[m][n])
-    	        // sample from p(z_i|z_-i, w)
-    	        int topic = sampling(m, n);
-    	        z[m][n] = topic;
-    	    }
-    	}
-    	
-    	if (savestep > 0) {
-    	    if (liter % savestep == 0) {
-    		    // saving the model
-    		    printf("Saving the model at iteration %d ...\n", liter);
-    		    compute_theta();
-    		    compute_phi();
-    		    save_model(utils::generate_model_name(liter, fname));
-    	    }
-    	}
-    }
+    #pragma omp parallel for
+    for (int pp = 0; pp < num_threads; ++pp)
+        // Each iteration of Gibbs
+        int last_iter = liter;
+        for (liter = last_iter + 1; liter <= niters + last_iter; liter++) {
+            printf("Iteration %d ...\n", liter);
+        	
+        	// for all z_i (Each Gibbs sample)
+            for (int m = (pp / num_threads) * M; m < ((pp + 1) / num_threads) * M; m++) {
+                for (int n = 0; n < ptrndata->docs[m]->length; n++) {
+        	        // (z_i = z[m][n])
+        	        // sample from p(z_i|z_-i, w)
+
+        	        int topic = sampling(m, n);
+        	        z[m][n] = topic;
+        	    }
+        	}
+        	
+        	if (savestep > 0) {
+        	    if (liter % savestep == 0) {
+        		    // saving the model
+        		    printf("Saving the model at iteration %d ...\n", liter);
+        		    compute_theta();
+        		    compute_phi();
+        		    save_model(utils::generate_model_name(liter, fname));
+        	    }
+        	}
+        }
     
     printf("Gibbs sampling completed!\n");
     printf("Saving the final model!\n");
@@ -812,10 +819,15 @@ int model::sampling(int m, int n) {
     // remove z_i from the count variables
     int topic = z[m][n];
     int w = ptrndata->docs[m]->words[n];
-    nw[w][topic] -= 1;
-    nd[m][topic] -= 1;
-    nwsum[topic] -= 1;
-    ndsum[m] -= 1;
+
+    #pragma omp atomic
+    nw[w][topic]--;
+    #pragma omp atomic
+    nd[m][topic]--;
+    #pragma omp atomic
+    nwsum[topic]--;
+    #pragma omp atomic
+    ndsum[m]--;
 
     int oldtopic = topic;
     double Vbeta = V * beta;
@@ -879,10 +891,14 @@ int model::sampling(int m, int n) {
     }
     
     // add newly estimated z_i to count variables
-    nw[w][topic] += 1;
-    nd[m][topic] += 1;
-    nwsum[topic] += 1;
-    ndsum[m] += 1;    
+    #pragma omp atomic
+    nw[w][topic]++;
+    #pragma omp atomic
+    nd[m][topic]++;
+    #pragma omp atomic
+    nwsum[topic]++;
+    #pragma omp atomic
+    ndsum[m]++;    
     
     return topic;
 }

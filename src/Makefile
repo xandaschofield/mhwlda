@@ -2,25 +2,27 @@ CC=		g++
 
 OBJS=		strtokenizer.o dataset.o utils.o model.o walker.o
 MAIN=		lda
+FLAGS=		-fopenmp -O3 -o
+OFLAGS=		-fopenmp -O3 -c -o
  
 all:	$(OBJS) $(MAIN).cpp
-	$(CC) -g -o $(MAIN) $(MAIN).cpp $(OBJS)
+	$(CC) $(FLAGS) $(MAIN) $(MAIN).cpp $(OBJS)
 	strip $(MAIN)
 
 walker.o: walker.h walker.cpp
-	$(CC) -g -c -o walker.o walker.cpp
+	$(CC) $(OFLAGS) walker.o walker.cpp
 
 strtokenizer.o:	strtokenizer.h strtokenizer.cpp
-	$(CC) -g -c -o strtokenizer.o strtokenizer.cpp
+	$(CC) $(OFLAGS) strtokenizer.o strtokenizer.cpp
 
 dataset.o:	dataset.h dataset.cpp
-	$(CC) -g -c -o dataset.o dataset.cpp
+	$(CC) $(OFLAGS) dataset.o dataset.cpp
 
 utils.o:	utils.h utils.cpp
-	$(CC) -g -c -o utils.o utils.cpp
+	$(CC) $(OFLAGS) utils.o utils.cpp
 
 model.o:	model.h model.cpp walker.o
-	$(CC) -g -c -o model.o model.cpp
+	$(CC) $(OFLAGS) model.o model.cpp
 
 test:
 	

@@ -99,6 +99,8 @@ public:
     int * newndsum;
     double ** newtheta;
     double ** newphi;
+
+    int num_threads;
     // --------------------------------------
     
     model() {

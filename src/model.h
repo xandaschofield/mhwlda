@@ -86,7 +86,7 @@ public:
     int * ndsum;                    // nasum[i]: total number of words in document i, size M
     double ** theta;                // theta: document-topic distributions, size M x K
     double ** phi;                  // phi: topic-word distributions, size K x V 
-    walker ** alias_samples;         // alias_samples[w]: a vector of topic samples for word w up to length K
+    walker *** alias_samples;         // alias_samples[p][w]: a walker alias of samples for process p and word w
     
     // for inference only
     int inf_liter;
@@ -147,8 +147,8 @@ public:
 	
     // estimate LDA model using Gibbs sampling
     void estimate();
-    int sampling(int m, int n);
-    void walker_alias(int w);
+    int sampling(int m, int n, int pp);
+    void walker_alias(int w, int p);
     void compute_theta();
     void compute_phi();
     

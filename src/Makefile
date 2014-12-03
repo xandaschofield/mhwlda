@@ -1,4 +1,4 @@
-CC=		g++
+CC=		g++-4.8
 
 OBJS=		strtokenizer.o dataset.o utils.o model.o walker.o
 MAIN=		lda

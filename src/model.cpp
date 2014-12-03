@@ -152,11 +152,14 @@ model::~model() {
     }
 
     if (alias_samples) {
-    for (int w = 0; w < V; w++)
-        if (alias_samples[w]) {
-        delete alias_samples[w];
+    for (int p = 0; p < num_threads; ++p) {
+        for (int w = 0; w < V; w++) {
+            if (alias_samples[p][w]) {
+                delete alias_samples[p][w];
+            }
         }
-    }
+    delete [] alias_samples;
+    }}
 }
 
 void model::set_default_values() {
@@ -680,9 +683,12 @@ int model::init_est() {
         phi[k] = new double[V];
     }    
     
-    alias_samples = new walker*[V];
-    for (w = 0; w < V; w++) {
-        alias_samples[w] = NULL;
+    alias_samples = new walker**[num_threads];
+    for (int p = 0; p < num_threads; ++p) {
+        alias_samples[p] = new walker*[V];
+        for (w = 0; w < V; w++) {
+            alias_samples[p][w] = NULL;
+        }
     }
 
     return 0;
@@ -767,57 +773,62 @@ void model::estimate() {
 
     printf("Sampling %d iterations with %d processors!\n", niters, num_threads);
 
-    int pp(0);
     int last_iter = liter;
     int li(liter);
-    #pragma omp parallel for private(pp, li)
-    for (pp = 0; pp < num_threads; ++pp)
+
+    #pragma omp parallel for private(li)
+    for (int pp = 0; pp < num_threads; ++pp) {
+        int first_doc = (int)((pp * 1.0 / num_threads) * M);
+        int last_doc = (int)(((pp + 1.0) / num_threads) * M);
         // Each iteration of Gibbs
         for (int li = last_iter + 1; li <= niters + last_iter; ++li) {
-            printf("Iteration %d ...\n", li);
+            // printf("P%d: Iteration %d ...\n", pp, li);
         	
         	// for all z_i (Each Gibbs sample)
-            for (int m = (pp / num_threads) * M; m < ((pp + 1) / num_threads) * M; m++) {
+            for (int m = first_doc; m < last_doc; m++) {
                 for (int n = 0; n < ptrndata->docs[m]->length; n++) {
         	        // (z_i = z[m][n])
         	        // sample from p(z_i|z_-i, w)
 
-        	        int topic = sampling(m, n);
+        	        int topic = sampling(m, n, pp);
         	        z[m][n] = topic;
         	    }
         	}
         	
+           
         	if (savestep > 0) {
-        	    if (liter % savestep == 0) {
+        	    if (li % savestep == 0 && pp == 0) {
         		    // saving the model
-        		    printf("Saving the model at iteration %d ...\n", liter);
+                    printf("Saving the model at iteration %d ...\n", li);
         		    compute_theta();
         		    compute_phi();
-        		    save_model(utils::generate_model_name(liter, fname));
-        	    }
+        		    save_model(utils::generate_model_name(li, fname));
+
+                }
         	}
         }
+    }
     
     printf("Gibbs sampling completed!\n");
     printf("Saving the final model!\n");
     compute_theta();
     compute_phi();
-    liter--;
+    liter = niters + last_iter - 1;
     save_model(utils::generate_model_name(-1, fname));
 }
 
-void model::walker_alias(int w) {
+void model::walker_alias(int w, int pp) {
     walker * sampler = new walker(w, this);
     sampler->pull_samples();
-    if (alias_samples[w] != NULL) {
-        delete alias_samples[w];
+    if (alias_samples[pp][w] != NULL) {
+        delete alias_samples[pp][w];
     }
-    alias_samples[w] = sampler;
+    alias_samples[pp][w] = sampler;
 }
 
 // The Gibbs sampler itself
 // TODO (xanda) rewrite this for MHW
-int model::sampling(int m, int n) {
+int model::sampling(int m, int n, int pp) {
     // remove z_i from the count variables
     int topic = z[m][n];
     int w = ptrndata->docs[m]->words[n];
@@ -835,10 +846,10 @@ int model::sampling(int m, int n) {
     double Vbeta = V * beta;
     double Ptotal = 0.0;
 
-    if (alias_samples[w] == NULL) {
-        walker_alias(w);
+    if (alias_samples[pp][w] == NULL) {
+        walker_alias(w, pp);
     }
-    double Qtotal = alias_samples[w]->Q;
+    double Qtotal = alias_samples[pp][w]->Q;
     vector<int> validks;
 
     // do multinomial sampling via cumulative method
@@ -856,11 +867,11 @@ int model::sampling(int m, int n) {
         double u = ((double)random() / RAND_MAX) * (Ptotal + Qtotal);
     
         if (u < Qtotal) {
-            if (alias_samples[w] == NULL or alias_samples[w]->is_empty()) {
-                walker_alias(w);
-                Qtotal = alias_samples[w]->Q;
+            if (alias_samples[pp][w] == NULL or alias_samples[pp][w]->is_empty()) {
+                walker_alias(w, pp);
+                Qtotal = alias_samples[pp][w]->Q;
             }
-            topic = alias_samples[w]->next_topic();
+            topic = alias_samples[pp][w]->next_topic();
         } else {
             u -= Qtotal;
             for (vector<int>::iterator i = validks.begin(); i != validks.end(); ++i) {
@@ -878,10 +889,10 @@ int model::sampling(int m, int n) {
         }
         double probaccept = (
                              (nd[m][topic] + alpha) * (nw[w][topic] + beta) *
-                             (nwsum[oldtopic] + Vbeta) * (p[oldtopic] + alias_samples[w]->topicprobs[oldtopic])
+                             (nwsum[oldtopic] + Vbeta) * (p[oldtopic] + alias_samples[pp][w]->topicprobs[oldtopic])
                             ) / ( 
                              (nd[m][oldtopic] + alpha) * (nw[w][oldtopic] + beta) *
-                             (nwsum[topic] + Vbeta) * (p[topic] + alias_samples[w]->topicprobs[topic])
+                             (nwsum[topic] + Vbeta) * (p[topic] + alias_samples[pp][w]->topicprobs[topic])
                             );
         if (probaccept >= 1.0) {
             break;

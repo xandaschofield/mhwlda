@@ -132,6 +132,7 @@ public:
     int save_model_phi(string filename);
     int save_model_others(string filename);
     int save_model_twords(string filename);
+    int save_model_words(string filename);
     
     // saving inference outputs
     int save_inf_model(string model_name);

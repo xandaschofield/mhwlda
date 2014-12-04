@@ -448,6 +448,23 @@ int model::save_model_twords(string filename) {
     return 0;    
 }
 
+int model::save_model_words(string filename) {
+    FILE * fout = fopen(filename.c_str(), "w");
+    if (!fout) {
+	printf("Cannot open file %s to save!\n", filename.c_str());
+	return 1;
+    }
+
+    mapid2word::iterator it = id2word.begin();
+    while (it != id2word.end()) {
+        fprintf(fout, "%d   %s\n", (it->first), (it->second).c_str());
+        ++it;
+    }
+
+    fclose(fout);
+    return 0;
+}
+
 int model::save_inf_model(string model_name) {
     if (save_inf_model_tassign(dir + model_name + tassign_suffix)) {
 	return 1;
@@ -770,18 +787,31 @@ void model::estimate() {
 	    // print out top words per topic
 	    dataset::read_wordmap(dir + wordmapfile, &id2word);
     }
+    if (save_model_words(dir + fname + ".words")) {
+	    return;
+    }
 
     printf("Sampling %d iterations with %d processors!\n", niters, num_threads);
 
     int last_iter = liter;
     int li(liter);
 
+
     #pragma omp parallel for private(li)
     for (int pp = 0; pp < num_threads; ++pp) {
         int first_doc = (int)((pp * 1.0 / num_threads) * M);
         int last_doc = (int)(((pp + 1.0) / num_threads) * M);
+        
+        time_t start_t, end_t;
+        time(&start_t);
+        int num_tokens = 0;
+        for (int ii = first_doc; ii < last_doc; ++ii) {
+            num_tokens += ptrndata->docs[ii]->length;
+        }
+        printf("P%d: %d tokens\n", pp, num_tokens);
+
         // Each iteration of Gibbs
-        for (int li = last_iter + 1; li <= niters + last_iter; ++li) {
+        for (li = last_iter + 1; li <= niters + last_iter; ++li) {
             // printf("P%d: Iteration %d ...\n", pp, li);
         	
         	// for all z_i (Each Gibbs sample)
@@ -794,8 +824,13 @@ void model::estimate() {
         	        z[m][n] = topic;
         	    }
         	}
-        	
-           
+            if (li % 50 == 0) {
+               time(&end_t);
+               double diff_t = difftime(end_t, start_t);
+               double tps = num_tokens * 50 / diff_t;
+               start_t = end_t;
+               printf("P%d, iter %d: %lf tokens per second\n", pp, li, tps);
+            }
         	if (savestep > 0) {
         	    if (li % savestep == 0 && pp == 0) {
         		    // saving the model
@@ -803,7 +838,7 @@ void model::estimate() {
         		    compute_theta();
         		    compute_phi();
         		    save_model(utils::generate_model_name(li, fname));
-
+                    time(&start_t);
                 }
         	}
         }

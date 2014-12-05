@@ -148,7 +148,7 @@ public:
 	
     // estimate LDA model using Gibbs sampling
     void estimate();
-    int sampling(int m, int n, int pp);
+    int sampling(int m, int n, int pp, int first_doc, int ** localnd, int * localndsum, int ** localz);
     void walker_alias(int w, int p);
     void compute_theta();
     void compute_phi();

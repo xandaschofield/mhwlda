@@ -43,7 +43,7 @@ walker::~walker()
     delete [] topicprobs;
 }
 
-walker::walker(int w, model * mod) : w(w), K(mod->K), Q(0.0) 
+walker::walker(int w, model * mod, int * localnwsum) : w(w), K(mod->K), Q(0.0) 
 {
     queue<topicprob> H;
     queue<topicprob> L;
@@ -51,7 +51,7 @@ walker::walker(int w, model * mod) : w(w), K(mod->K), Q(0.0)
     double totalprob = 0.0;
     double threshold = 1.0 / K;
     for (int i = 0; i < K; ++i) {
-        double probprop = mod->alpha * (mod->nw[w][i] + mod->beta) / (mod->nwsum[i] + (mod->beta * mod->V));
+        double probprop = mod->alpha * (mod->nw[w][i] + mod->beta) / (localnwsum[i] + (mod->beta * mod->V));
         topicprobs[i] = probprop;
         Q += probprop;
     }

@@ -60,7 +60,7 @@ public:
     double * topicprobs;    // unnormalized probabilities of topics
     vector<int> samples;    // samples (if any)
 
-    walker (int w, model * mod);
+    walker (int w, model * mod, int * localnwsum);
     ~walker();
 
     // set default values for variables

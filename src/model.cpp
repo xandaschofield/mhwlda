@@ -653,10 +653,13 @@ int model::init_est() {
         }
     }
 
-    // nwsum[k] is the total count of tokens assigned to topic k	
-    nwsum = new int[K];
-    for (k = 0; k < K; k++) {
-	nwsum[k] = 0;
+    // nwpsum[p][k] is the total count of tokens assigned to topic k on proc p	
+    nwpsum = new int*[num_threads];
+    for (int pp = 0; pp < num_threads; pp++) {
+        nwpsum[pp] = new int[K];
+        for (k = 0; k < K; k++) {
+	       nwpsum[pp][k] = 0;
+        }
     }
     
 
@@ -682,7 +685,7 @@ int model::init_est() {
     	    // number of words in document i assigned to topic j
     	    nd[m][topic] += 1;
     	    // total number of words assigned to topic j
-    	    nwsum[topic] += 1;
+    	    nwpsum[(int)m * num_threads / M][topic] += 1;
         } 
         // total number of words in document i
         ndsum[m] = N;      
@@ -794,7 +797,7 @@ void model::estimate() {
     printf("Sampling %d iterations with %d processors!\n", niters, num_threads);
 
     int last_iter = liter;
-    int li(liter);
+    int li(last_iter);
 
     #pragma omp parallel for private(li) default(shared)
     for (int pp = 0; pp < num_threads; ++pp) {
@@ -826,6 +829,19 @@ void model::estimate() {
             }      
         }
 
+        int ** localnwpsum = new int * [num_threads];
+        for (int pp = 0; pp < num_threads; ++pp) {
+            localnwpsum[pp] = new int[K];
+        }
+        int * localnwsum = new int[K];
+        for (int k = 0; k < K; ++k) {
+            localnwsum[k] = 0;
+            for (int p = 0; p < num_threads; ++p) {
+                localnwpsum[p][k] = nwpsum[p][k];
+                localnwsum[k] += nwpsum[p][k];
+            }
+        }
+
         time_t start_t, end_t;
         time(&start_t);
         int num_tokens = 0;
@@ -835,7 +851,7 @@ void model::estimate() {
         printf("P%d: %d tokens\n", pp, num_tokens);
 
         // Each iteration of Gibbs
-        for (li = last_iter + 1; li <= niters + last_iter; ++li) {
+        for (int li = last_iter + 1; li <= niters + last_iter; ++li) {
             // printf("P%d: Iteration %d ...\n", pp, li);
         	
         	// for all z_i (Each Gibbs sample)
@@ -844,10 +860,25 @@ void model::estimate() {
         	        // (z_i = z[m][n])
         	        // sample from p(z_i|z_-i, w)
 
-        	        int topic = sampling(m, n, pp, first_doc, localnd, localndsum, localz);
+        	        int topic = sampling(m, n, pp, first_doc, localnd, localndsum, localz, localnwpsum[pp], localnwsum);
         	        localz[m][n] = topic;
         	    }
         	}
+
+            for (int k = 0; k < K; ++k) {
+                nwpsum[pp][k] = localnwpsum[pp][k];
+            }
+            
+            int proc_to_absorb = pp;
+            while (proc_to_absorb == pp) {
+                proc_to_absorb = random() % num_threads;
+            }
+            for (int k = 0; k < K; ++k) {
+                localnwsum[k] -= localnwpsum[proc_to_absorb][k];
+                localnwpsum[proc_to_absorb][k] = nwpsum[proc_to_absorb][k];
+                localnwsum[k] += localnwpsum[proc_to_absorb][k];
+            }
+
             if (li % 50 == 0) {
                time(&end_t);
                double diff_t = difftime(end_t, start_t);
@@ -881,27 +912,29 @@ void model::estimate() {
     save_model(utils::generate_model_name(-1, fname));
 }
 
-void model::walker_alias(int w, int pp) {
-    walker * sampler = new walker(w, this);
+void model::walker_alias(int w, int pp, int * localnwsum) {
+    walker * sampler = new walker(w, this, localnwsum);
     sampler->pull_samples();
     if (alias_samples[pp][w] != NULL) {
         swap(alias_samples[pp][w], sampler);
+        delete sampler;
+    } else {
+        alias_samples[pp][w] = sampler;
     }
-    delete sampler;
+
 }
 
 // The Gibbs sampler itself
 // TODO (xanda) rewrite this for MHW
-int model::sampling(int m, int n, int pp, int first_doc, int ** localnd, int * localndsum, int ** localz) {
+int model::sampling(int m, int n, int pp, int first_doc, int ** localnd, int * localndsum, int ** localz, int * localnwpsum, int * localnwsum) {
     // remove z_i from the count variables
     int topic = localz[m][n];
     int w = ptrndata->docs[m+first_doc]->words[n];
 
-    #pragma omp atomic
     nw[w][topic]--;
     localnd[m][topic]--;
-    #pragma omp atomic
-    nwsum[topic]--;
+    localnwsum[topic]--;
+    localnwpsum[topic]--;
     localndsum[m]--;
 
     int oldtopic = topic;
@@ -909,18 +942,18 @@ int model::sampling(int m, int n, int pp, int first_doc, int ** localnd, int * l
     double Ptotal = 0.0;
 
     if (alias_samples[pp][w] == NULL) {
-        walker_alias(w, pp);
+        walker_alias(w, pp, localnwsum);
     }
     double Qtotal = alias_samples[pp][w]->Q;
-    vector<int> validks;
+    bool kvalid[K];
 
     // do multinomial sampling via cumulative method
     for (int k = 0; k < K; k++) {
-        if (localnd[m][k] == 0)
-            continue;
-        validks.push_back(k);
-        p[k] = localnd[m][k] * (nw[w][k] + beta) / (nwsum[k] + Vbeta);
-        Ptotal += p[k];
+        kvalid[k] = (localnd[m][k] != 0);
+        if (kvalid[k]) {
+            p[k] = localnd[m][k] * (nw[w][k] + beta) / (localnwsum[k] + Vbeta);
+            Ptotal += p[k];
+        }
     }
 
     while (true) {
@@ -930,18 +963,21 @@ int model::sampling(int m, int n, int pp, int first_doc, int ** localnd, int * l
     
         if (u < Qtotal) {
             if (alias_samples[pp][w] == NULL or alias_samples[pp][w]->is_empty()) {
-                walker_alias(w, pp);
+                walker_alias(w, pp, localnwsum);
                 Qtotal = alias_samples[pp][w]->Q;
             }
             topic = alias_samples[pp][w]->next_topic();
         } else {
             u -= Qtotal;
-            for (vector<int>::iterator i = validks.begin(); i != validks.end(); ++i) {
-    	        if (p[*i] > u) {
-                    topic = *i;
+            for (int k = 0; k < K; ++k) {
+                if (!kvalid[k]) {
+                    continue;
+                }
+    	        if (p[k] > u) {
+                    topic = k;
     	            break;
     	        } else {
-                    u -= p[*i];
+                    u -= p[k];
                 }
             }
         }
@@ -951,10 +987,10 @@ int model::sampling(int m, int n, int pp, int first_doc, int ** localnd, int * l
         }
         double probaccept = (
                              (localnd[m][topic] + alpha) * (nw[w][topic] + beta) *
-                             (nwsum[oldtopic] + Vbeta) * (p[oldtopic] + alias_samples[pp][w]->topicprobs[oldtopic])
+                             (localnwsum[oldtopic] + Vbeta) * (p[oldtopic] + alias_samples[pp][w]->topicprobs[oldtopic])
                             ) / ( 
                              (localnd[m][oldtopic] + alpha) * (nw[w][oldtopic] + beta) *
-                             (nwsum[topic] + Vbeta) * (p[topic] + alias_samples[pp][w]->topicprobs[topic])
+                             (localnwsum[topic] + Vbeta) * (p[topic] + alias_samples[pp][w]->topicprobs[topic])
                             );
         if (probaccept >= 1.0) {
             break;
@@ -966,11 +1002,10 @@ int model::sampling(int m, int n, int pp, int first_doc, int ** localnd, int * l
     }
     
     // add newly estimated z_i to count variables
-    #pragma omp atomic
     nw[w][topic]++;
     localnd[m][topic]++;
-    #pragma omp atomic
-    nwsum[topic]++;
+    localnwsum[topic]++;
+    localnwpsum[topic]++;
     localndsum[m]++;    
     
     return topic;

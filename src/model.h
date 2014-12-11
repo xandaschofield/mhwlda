@@ -153,7 +153,8 @@ public:
     void walker_alias(int w, int p, int * localnwsum);
     void compute_theta();
     void compute_phi();
-    
+    void compute_phi(int * localnwsum);
+
     // init for inference
     int init_inf();
     // inference for new (unseen) data based on the estimated LDA model

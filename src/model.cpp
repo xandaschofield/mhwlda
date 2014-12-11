@@ -32,6 +32,7 @@
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <tgmath.h>
 #include <time.h>
 #include "constants.h"
 #include "strtokenizer.h"
@@ -711,6 +712,11 @@ int model::init_est() {
         }
     }
 
+    nwsum = new int[K];
+    for (k = 0; k < K; k++) {
+    nwsum[k] = 0;
+    }
+
     return 0;
 }
 
@@ -895,15 +901,31 @@ void model::estimate() {
         	    if (li % savestep == 0 && pp == 0) {
         		    // saving the model
                     printf("Saving the model at iteration %d ...\n", li);
-        		    compute_theta();
-        		    compute_phi();
-        		    save_model(utils::generate_model_name(li, fname));
+                    for (int m = 0; m < localM; m++) {
+                        // initialize for z
+                        int N = localndsum[m];
+                        for (int n = 0; n < N; n++) {
+                            z[m + first_doc][n] = localz[m][n];
+                            for (int k = 0; k < K; ++k) {
+                                nd[m + first_doc][k] = localnd[m][k];
+                            }
+                        }
+                    }
+                    compute_theta();
+                    compute_phi(localnwsum);
+                    save_model(utils::generate_model_name(li, fname));
                     time(&start_t);
                 }
         	}
         }
     }
-    
+
+    for (int pp = 0; pp < num_threads; ++pp) {
+        for (int k = 0; k < K; ++k) {
+            nwsum[k] += nwpsum[pp][k];
+        }
+    }
+
     printf("Gibbs sampling completed!\n");
     printf("Saving the final model!\n");
     compute_theta();
@@ -1024,6 +1046,14 @@ void model::compute_phi() {
 	for (int w = 0; w < V; w++) {
 	    phi[k][w] = (nw[w][k] + beta) / (nwsum[k] + V * beta);
 	}
+    }
+}
+
+void model::compute_phi(int * localnwsum) {
+    for (int k = 0; k < K; k++) {
+    for (int w = 0; w < V; w++) {
+        phi[k][w] = (nw[w][k] + beta) / (localnwsum[k] + V * beta);
+    }
     }
 }
 
